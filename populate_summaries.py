@@ -1,16 +1,19 @@
 
 from collections import defaultdict
-from anyllm import generate # Replace with custom access to a generative system
+# from anyllm import generate # Replace with custom access to a generative system
+from utils_llm import LLM
+import yaml
 import json, tqdm, random
 import argparse
 import tiktoken
+from transformers import set_seed
 
 def bullet_processor(summary):
     lines = summary.split("\n")
     lines = [l.strip() for l in lines if l.strip() != ""]
     return lines
 
-def summarize(relev_docs, topic, subtopic, model_card):
+def summarize(relev_docs, topic, subtopic, llm: LLM):
     relev_docs_str = ""
     for doc in relev_docs:
         if args.domain == "conversation":
@@ -27,7 +30,8 @@ def summarize(relev_docs, topic, subtopic, model_card):
         num_insights_discussed = len(insights_discussed)
         prompt_summarization_populated = prompt_summarization.replace("[N_articles]", str(len(relev_docs))).replace("[ARTICLES]", relev_docs_str).replace("[TOPIC]", topic['topic']).replace("[N_insights]", str(num_insights_discussed)).replace("[SUBTOPIC]", subtopic['subtopic'])
 
-    response_summary = generate([{"role": "user", "content": prompt_summarization_populated}], model=model_card, step="sohard-summ-gen")
+    # response_summary = generate([{"role": "user", "content": prompt_summarization_populated}], model=model_card, step="sohard-summ-gen")
+    response_summary = LLM.generate(prompt_summarization_populated)
     return response_summary
 
 def get_insights_discussed(documents, subtopic):
@@ -111,12 +115,24 @@ def populate_subtopic_summaries(args):
                     json.dump(topic, f, indent=2)
 
 if __name__ == "__main__":
-
     parser = argparse.ArgumentParser()
-    parser.add_argument("--fn", type=str, required=True)
+
+    # general
+    parser.add_argument("--config", type=str, default=None, help="Path to the config file")
+    # parser.add_argument("--fn", type=str, required=True, help="Path to the output file")
+    parser.add_argument("--data_dir", type=str, default='data_cleaned', help="Path to the data directory")
+    parser.add_argument("--haystacks", nargs='+', default=['full'], help="Which specific haystacks to run experiments")
+    parser.add_argument("--output_dir", type=str, required=True, help="Path to the output directory")
+    parser.add_argument("--seed", type=int, default=42)
+
+    # data
     parser.add_argument("--domain", type=str, required=True, choices=["conversation", "news"])
-    parser.add_argument("--token_limit", type=int, default=15000, help="Maximum number of context tokens to retrieve")
+    
+    # model
     parser.add_argument("--model_cards", nargs='+', default=["full"], required=True, help="List of model cards to use for summarization")
+    
+    # strategy
+    parser.add_argument("--token_limit", type=int, default=15000, help="Maximum number of context tokens to retrieve")
     parser.add_argument('--retrieval_summ', action='store_true', help="Whether to summarize the retrieved documents")
     parser.add_argument('--full_summ', action='store_true', help="Whether to summarize the full set of documents")
     parser.add_argument('--full_summ_sorted', action='store_true', help="Whether to summarize the full set of documents")
@@ -124,12 +140,23 @@ if __name__ == "__main__":
     parser.add_argument('--full_summ_middle', action='store_true', help="Whether to summarize the full set of documents")
 
     args = parser.parse_args()
+    config = yaml.safe_load(open(args.config)) if args.config is not None else {}
+    parser.set_defaults(**config)
 
     assert not (args.full_summ_sorted and args.full_summ_reverse_sorted), "Cannot have both full_summ_sorted and full_summ_reverse_sorted"
+
+    set_seed(args.seed)
+
+    if args.haystacks == ["full"]:
+        args.haystacks = [f"topic_conv{i}" for i in range(1, 6)] + [f"topic_news{i}" for i in range(1, 6)]
 
     if args.model_cards == ["full"]:
         args.model_cards = ["gpt4-turbo", "gpt-4o", "claude3-haiku", "claude3-sonnet", "claude3-opus", "command-r", "command-r-plus", "gemini-1.5-flash", "gemini-1.5-pro"]
 
     print("Running with models: ", args.model_cards)
 
-    populate_subtopic_summaries(args)
+    for haystack in args.haystacks:
+        args.fn = f"{args.data_dir}/{haystack}.json"
+        print(f"======================")
+        print(f"Running on {args.fn}")
+        populate_subtopic_summaries(args)

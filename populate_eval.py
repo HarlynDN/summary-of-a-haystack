@@ -1,6 +1,10 @@
-from anyllm import generate_json # Replace with an function that can run GPT-4o
+# from anyllm import generate_json # Replace with an function that can run GPT-4o
+from utils_llm import LLM
 import json, tqdm
 
+
+def generate_json(prompt, model="gpt-4o", step="sohard-summ-gen", return_metadata=False):
+    pass
 
 def evaluate_insights(insights, bullets, evaluator_model_card, eval_prompt_fn="prompts/eval_summhay.txt", return_cost=False):
     with open(eval_prompt_fn, "r") as f:   
@@ -33,8 +37,8 @@ def populate_insight_evaluation(fn, evaluator_model_card="gpt-4o"):
         summ_keys = subtopic.get("summaries", {}).keys()
         for summ_key in summ_keys:
             bullets = subtopic["summaries"][summ_key]
-            if summ_key in subtopic["eval_summaries"] and len(subtopic["eval_summaries"][summ_key]) == len(subtopic["insights"]):
-                continue
+            # if summ_key in subtopic["eval_summaries"] and len(subtopic["eval_summaries"][summ_key]) == len(subtopic["insights"]):
+            #     continue
 
             subtopic["eval_summaries"][summ_key] = evaluate_insights(subtopic["insights"], bullets, evaluator_model_card)
             with open(fn, "w") as f:

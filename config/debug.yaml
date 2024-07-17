@@ -1,0 +1,2 @@
+fn: output/debug.json
+model: qwen2/72b-instruct
