@@ -13,12 +13,12 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-def is_openai_model(model_name: str) -> bool:
-    return model_name and ("gpt-3.5" in model_name or "gpt-4" in model_name)
+# def is_openai_model(model_name: str) -> bool:
+#     return model_name and ("gpt-3.5" in model_name or "gpt-4" in model_name)
 
-def check_openai_api():
-    if not os.getenv("OPENAI_API_KEY"):
-        raise ValueError("Please set the OPENAI_API_KEY environment variable. See https://platform.openai.com/docs/quickstart")
+# def check_openai_api():
+#     if not os.getenv("OPENAI_API_KEY"):
+#         raise ValueError("Please set the OPENAI_API_KEY environment variable. See https://platform.openai.com/docs/quickstart")
 
 
 class LLM:
@@ -48,15 +48,17 @@ class LLM:
         max_tokens: int = 300,
         seed: int = 42
     ) -> str:
+        # local model
+        if not self.use_api:
+            return self._generate_hf(prompt, do_sample, temperature, max_tokens)
         # openai api
         if 'gpt' in self.model_name:
             return self._generate_openai_api(prompt, do_sample, temperature, max_tokens, seed)
         # qwen api
-        elif 'qwen' in self.model_name :
-            return self._generate_qwen_api(prompt, do_sample, temperature, max_tokens, seed)
-        # local model
+        elif 'qwen' in self.model_name or 'llama' in self.model_name:
+            return self._generate_dashscope_api(prompt, do_sample, temperature, max_tokens, seed)
         else:
-            return self._generate_hf(prompt, do_sample, temperature, max_tokens)
+            return NotImplementedError
 
     def _generate_hf(
         self,
@@ -110,7 +112,7 @@ class LLM:
 
         return res.choices[0].message.content
     
-    def _generate_qwen_api(
+    def _generate_dashscope_api(
         self,
         prompt: str,
         do_sample: bool = True,

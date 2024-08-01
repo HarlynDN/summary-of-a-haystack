@@ -1,5 +1,6 @@
 
 from collections import defaultdict
+import os
 # from anyllm import generate # Replace with custom access to a generative system
 from utils_llm import LLM
 import yaml
@@ -61,6 +62,7 @@ def get_docs_token_limit(documents, subtopic, retriever, max_retrieval_tokens):
         docs_final.append((doc_str, doc['idx'])) ## assume that idx is now part of the schema
     return docs_final
     
+
 def populate_subtopic_summaries(args):
     topic = json.load(open(args.fn, "r" ))
 
@@ -114,7 +116,10 @@ def populate_subtopic_summaries(args):
 
                 response_summary = summarize(prepped_docs, topic, subtopic, model_card)
                 subtopic["summaries"][pop_key] = bullet_processor(response_summary)
-                with open(args.fn, "w") as f:
+
+                if not os.path.exists(os.output_dir):
+                    os.makedirs(os.output_dir)
+                with open(args.output_fn, "w") as f:
                     json.dump(topic, f, indent=2)
 
 if __name__ == "__main__":
@@ -128,8 +133,7 @@ if __name__ == "__main__":
     parser.add_argument("--output_dir", type=str, required=True, help="Path to the output directory")
     parser.add_argument("--seed", type=int, default=42)
 
-    # data
-    parser.add_argument("--domain", type=str, required=True, choices=["conversation", "news"])
+    # parser.add_argument("--domain", type=str, required=True, choices=["conversation", "news"])
     
     # model
     parser.add_argument("--model_cards", nargs='+', default=["full"], required=True, help="List of model cards to use for summarization")
@@ -154,12 +158,15 @@ if __name__ == "__main__":
         args.haystacks = [f"topic_conv{i}" for i in range(1, 6)] + [f"topic_news{i}" for i in range(1, 6)]
 
     if args.model_cards == ["full"]:
-        args.model_cards = ["gpt4-turbo", "gpt-4o", "claude3-haiku", "claude3-sonnet", "claude3-opus", "command-r", "command-r-plus", "gemini-1.5-flash", "gemini-1.5-pro"]
+        # args.model_cards = ["gpt4-turbo", "gpt-4o", "claude3-haiku", "claude3-sonnet", "claude3-opus", "command-r", "command-r-plus", "gemini-1.5-flash", "gemini-1.5-pro"]
+        args.model_cards = ["llama3.1-8b-instruct", "llama3.1-70b-instruct", "llama3.1-405b-instruct"]
 
     print("Running with models: ", args.model_cards)
 
     for haystack in args.haystacks:
         args.fn = f"{args.data_dir}/{haystack}.json"
+        args.domain = "conversation" if "conv" in haystack else "news"
+        args.output_fn = f"{args.output_dir}/{haystack}.json"
         print(f"======================")
         print(f"Running on {args.fn}")
         populate_subtopic_summaries(args)
