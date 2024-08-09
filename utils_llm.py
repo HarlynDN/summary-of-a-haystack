@@ -3,6 +3,7 @@ import logging
 
 from openai import OpenAI
 from http import HTTPStatus
+import requests
 import dashscope
 
 import tiktoken
@@ -36,7 +37,7 @@ class LLM:
 
 
     def count_tokens(self, text: str, encoding='cl100k_base') -> int:
-        enc = tiktoken.encoding_for_model(encoding)
+        enc = tiktoken.get_encoding(encoding)
         return len(enc.encode(text))
         
 
@@ -52,11 +53,14 @@ class LLM:
         if not self.use_api:
             return self._generate_hf(prompt, do_sample, temperature, max_tokens)
         # openai api
-        if 'gpt' in self.model_name:
+        if 'gpt' in self.model_name.lower():
             return self._generate_openai_api(prompt, do_sample, temperature, max_tokens, seed)
         # qwen api
-        elif 'qwen' in self.model_name or 'llama' in self.model_name:
+        elif 'qwen' in self.model_name.lower() or 'llama' in self.model_name.lower():
             return self._generate_dashscope_api(prompt, do_sample, temperature, max_tokens, seed)
+        # deepbricks api
+        # elif 'llama' in self.model_name.lower():
+        #     return self._generate_deepbricks_api(prompt, do_sample, temperature, max_tokens, seed)
         else:
             return NotImplementedError
 
@@ -142,3 +146,28 @@ class LLM:
             ))
 
         return res.output.text
+    
+    def _generate_deepbricks_api(
+        self,
+        prompt: str,
+        do_sample: bool = True,
+        temperature: float = 1,
+        max_tokens: int = 300,
+        seed: int = 42
+    ) -> str:
+        DEEPBRICKS_API_KEY = os.environ.get("DEEPBRICKS_API_KEY")
+        if not DEEPBRICKS_API_KEY:
+            raise ValueError("Please set the DEEPBRICKS_API_KEY environment variable.")
+        messages = [{"role": "user", "content": prompt}]
+
+        url = "https://api.deepbricks.ai/v1/chat/completions"
+        body = {
+            "model": self.model_name,
+            "messages": messages,
+        }
+        res = requests.post(url, headers={"Authorization": f"Bearer {DEEPBRICKS_API_KEY}"}, json=body)
+        if res.status_code != HTTPStatus.OK:
+            raise RuntimeError(res.json())
+        return res.json()['choices'][0]['message']['content']
+        
+

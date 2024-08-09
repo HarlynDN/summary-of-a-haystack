@@ -32,7 +32,7 @@ def summarize(relev_docs, topic, subtopic, llm: LLM):
         prompt_summarization_populated = prompt_summarization.replace("[N_articles]", str(len(relev_docs))).replace("[ARTICLES]", relev_docs_str).replace("[TOPIC]", topic['topic']).replace("[N_insights]", str(num_insights_discussed)).replace("[SUBTOPIC]", subtopic['subtopic'])
 
     # response_summary = generate([{"role": "user", "content": prompt_summarization_populated}], model=model_card, step="sohard-summ-gen")
-    response_summary = LLM.generate(prompt_summarization_populated)
+    response_summary = llm.generate(prompt_summarization_populated)
     return response_summary
 
 def get_insights_discussed(documents, subtopic):
@@ -74,22 +74,26 @@ def populate_subtopic_summaries(args):
     if len(model_cards) > 1:
         model_cards = tqdm.tqdm(model_cards, desc=f"Populating summaries of {args.fn}")
     for model_card in model_cards:
+        llm = LLM(model_name=model_card, use_api=args.use_api)
         for subtopic in tqdm.tqdm(topic["subtopics"]):
             if "summaries" not in subtopic:
                 subtopic["summaries"] = {}
                 subtopic["eval_summaries"] = {}
+
             if args.retrieval_summ:
-                retrievers = subtopic["retriever"].keys()
-                # retrievers = ["oracle", "random"]
+                # retrievers = subtopic["retriever"].keys()
+                retrievers = ["oracle"]
                 for retriever in retrievers:
                     pop_key = f"summary_subtopic_{retriever}_{model_card}"
                     if pop_key in subtopic["summaries"]:
                         continue
                     relev_docs = get_docs_token_limit(topic["documents"], subtopic, retriever, args.token_limit)
-                    response_summary = summarize(relev_docs, topic, subtopic, model_card)
+                    response_summary = summarize(relev_docs, topic, subtopic, llm)
                     subtopic["summaries"][pop_key] = bullet_processor(response_summary)
-                    with open(args.fn, "w") as f:
+
+                    with open(args.output_fn, "w") as f:
                         json.dump(topic, f, indent=2)
+
             if args.full_summ or args.full_summ_sorted or args.full_summ_reverse_sorted or args.full_summ_middle:
                 if args.full_summ:
                     pop_key = f"summary_subtopic_{model_card}"
@@ -114,11 +118,9 @@ def populate_subtopic_summaries(args):
                             doc_scores[doc_id] = 10
                     prepped_docs = sorted(prepped_docs, key=lambda x: doc_scores[x[2]], reverse=True)
 
-                response_summary = summarize(prepped_docs, topic, subtopic, model_card)
+                response_summary = summarize(prepped_docs, topic, subtopic, llm)
                 subtopic["summaries"][pop_key] = bullet_processor(response_summary)
 
-                if not os.path.exists(os.output_dir):
-                    os.makedirs(os.output_dir)
                 with open(args.output_fn, "w") as f:
                     json.dump(topic, f, indent=2)
 
@@ -130,13 +132,14 @@ if __name__ == "__main__":
     # parser.add_argument("--fn", type=str, required=True, help="Path to the output file")
     parser.add_argument("--data_dir", type=str, default='data_cleaned', help="Path to the data directory")
     parser.add_argument("--haystacks", nargs='+', default=['full'], help="Which specific haystacks to run experiments")
-    parser.add_argument("--output_dir", type=str, required=True, help="Path to the output directory")
+    parser.add_argument("--output_dir", type=str, default='output/tmp', help="Path to the output directory")
     parser.add_argument("--seed", type=int, default=42)
 
     # parser.add_argument("--domain", type=str, required=True, choices=["conversation", "news"])
     
     # model
-    parser.add_argument("--model_cards", nargs='+', default=["full"], required=True, help="List of model cards to use for summarization")
+    parser.add_argument("--model_cards", nargs='+', default=["full"], help="List of model cards to use for summarization")
+    parser.add_argument("--use_api", action="store_true", help="Whether to use cloud server's API for generation")
     
     # strategy
     parser.add_argument("--token_limit", type=int, default=15000, help="Maximum number of context tokens to retrieve")
@@ -149,6 +152,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     config = yaml.safe_load(open(args.config)) if args.config is not None else {}
     parser.set_defaults(**config)
+    args = parser.parse_args()
 
     assert not (args.full_summ_sorted and args.full_summ_reverse_sorted), "Cannot have both full_summ_sorted and full_summ_reverse_sorted"
 
@@ -156,16 +160,22 @@ if __name__ == "__main__":
 
     if args.haystacks == ["full"]:
         args.haystacks = [f"topic_conv{i}" for i in range(1, 6)] + [f"topic_news{i}" for i in range(1, 6)]
+    elif isinstance(args.haystacks, str):
+        args.haystacks = [args.haystacks]
 
     if args.model_cards == ["full"]:
         # args.model_cards = ["gpt4-turbo", "gpt-4o", "claude3-haiku", "claude3-sonnet", "claude3-opus", "command-r", "command-r-plus", "gemini-1.5-flash", "gemini-1.5-pro"]
         args.model_cards = ["llama3.1-8b-instruct", "llama3.1-70b-instruct", "llama3.1-405b-instruct"]
+    elif isinstance(args.model_cards, str):
+        args.model_cards = [args.model_cards]
 
     print("Running with models: ", args.model_cards)
 
     for haystack in args.haystacks:
         args.fn = f"{args.data_dir}/{haystack}.json"
         args.domain = "conversation" if "conv" in haystack else "news"
+        if not os.path.exists(args.output_dir):
+             os.makedirs(args.output_dir)
         args.output_fn = f"{args.output_dir}/{haystack}.json"
         print(f"======================")
         print(f"Running on {args.fn}")

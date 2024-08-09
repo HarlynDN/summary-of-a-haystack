@@ -6,7 +6,7 @@ import json, tqdm
 def generate_json(prompt, model="gpt-4o", step="sohard-summ-gen", return_metadata=False):
     pass
 
-def evaluate_insights(insights, bullets, evaluator_model_card, eval_prompt_fn="prompts/eval_summhay.txt", return_cost=False):
+def evaluate_insights(insights, bullets, evaluator: LLM, eval_prompt_fn="prompts/eval_summhay.txt", return_cost=False):
     with open(eval_prompt_fn, "r") as f:   
         prompt_eval = f.read()
 
@@ -17,9 +17,12 @@ def evaluate_insights(insights, bullets, evaluator_model_card, eval_prompt_fn="p
     for insight in insights:
         populated_prompt = prompt_eval.replace("[[BULLETS]]", bullets_str).replace("[[INSIGHT]]", insight["insight"])
         
-        response_all = generate_json([{"role": "user", "content": populated_prompt}], model=evaluator_model_card, step="sohard-insight-eval", return_metadata=True)
-        eval_cost += response_all["total_usd"]        
-        response_json  = response_all["message"]
+        # response_all = generate_json([{"role": "user", "content": populated_prompt}], model=evaluator_model_card, step="sohard-insight-eval", return_metadata=True)
+        response_all = evaluator.generate(populated_prompt)
+
+        # eval_cost += response_all["total_usd"]        
+        # response_json  = response_all["message"]
+        response_json = json.loads(response_all)
         response_json["insight_id"] = insight["insight_id"]
         insight_scores.append(response_json)
     if return_cost:
@@ -27,9 +30,11 @@ def evaluate_insights(insights, bullets, evaluator_model_card, eval_prompt_fn="p
     else:
         return insight_scores
 
-def populate_insight_evaluation(fn, evaluator_model_card="gpt-4o"):
+def populate_insight_evaluation(fn, evaluator_model_card):
     with open(fn, "r") as f:
         topic = json.load(f)
+
+    evaluator = LLM(evaluator_model_card, use_api=True)
 
     for subtopic in tqdm.tqdm(topic["subtopics"], desc=f"Populating insights evaluation of {fn}"):
         if "eval_summaries" not in subtopic:
@@ -40,7 +45,7 @@ def populate_insight_evaluation(fn, evaluator_model_card="gpt-4o"):
             # if summ_key in subtopic["eval_summaries"] and len(subtopic["eval_summaries"][summ_key]) == len(subtopic["insights"]):
             #     continue
 
-            subtopic["eval_summaries"][summ_key] = evaluate_insights(subtopic["insights"], bullets, evaluator_model_card)
+            subtopic["eval_summaries"][summ_key] = evaluate_insights(subtopic["insights"], bullets, evaluator)
             with open(fn, "w") as f:
                 json.dump(topic, f, indent=2)
 
@@ -50,7 +55,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--fn", type=str, required=True)
-    parser.add_argument("--evaluator_model_card", type=str, default="gpt-4o")
+    parser.add_argument("--evaluator_model_card", type=str, default="qwen2-72b-instruct")
     args = parser.parse_args()
 
     populate_insight_evaluation(args.fn, args.evaluator_model_card)

@@ -1,4 +1,5 @@
 haystacks: topic_conv1
 output_dir: output/debug
-model_cards: llama3.1-8b-instruct
-full_summ: true
+model_cards: qwen2-7b-instruct
+use_api: true
+retrieval_summ: true
